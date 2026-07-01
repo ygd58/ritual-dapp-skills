@@ -30,15 +30,14 @@
     },
     {
       "name": "PriceAlert",
-      "address": "",
-      "deploy_block": null,
+      "address": "0x145822e5ca5B9BA4570CB9Ddd6a46Bc1234Db58B",
+      "deploy_block": 39892951,
       "features": [
         "HTTP precompile",
         "On-chain JSON parsing",
         "Price threshold alerts"
       ],
-      "github": "examples/price-alert/PriceAlert.sol",
-      "note": "Example contract \u2014 deploy to get address"
+      "github": "examples/price-alert/PriceAlert.sol"
     }
   ]
 }
