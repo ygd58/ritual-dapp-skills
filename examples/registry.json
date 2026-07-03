@@ -30,16 +30,15 @@
     },
     {
       "name": "FactChecker",
-      "address": "",
-      "deploy_block": null,
+      "address": "0x70F3606e27a220b233eFCde64972609Eb4326f84",
+      "deploy_block": 40897387,
       "features": [
         "HTTP precompile",
         "LLM precompile",
         "Multi-precompile flow",
         "On-chain fact verification"
       ],
-      "github": "examples/fact-checker/FactChecker.sol",
-      "note": "First example chaining HTTP + LLM precompiles on Ritual Chain"
+      "github": "examples/fact-checker/FactChecker.sol"
     }
   ]
 }
