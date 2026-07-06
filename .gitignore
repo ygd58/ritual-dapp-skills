@@ -23,3 +23,4 @@ Thumbs.db
 .vscode/
 examples/rag-agent/out/
 examples/rag-agent/cache/
+examples/rag-agent/lib/
