@@ -8,9 +8,14 @@ pragma solidity ^0.8.24;
 ///         answer are stored on-chain.
 /// @dev Two-step async flow: fetchDoc() then askQuestion(). One async tx per sender.
 contract RagAgent {
-    address constant HTTP_PRECOMPILE = address(0x0801);
-    address constant LLM_PRECOMPILE  = address(0x0802);
-    address constant RITUAL_WALLET   = 0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948;
+    address public immutable HTTP_PRECOMPILE;
+    address public immutable LLM_PRECOMPILE;
+    address constant RITUAL_WALLET = 0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948;
+
+    constructor(address _http, address _llm) {
+        HTTP_PRECOMPILE = _http == address(0) ? address(0x0801) : _http;
+        LLM_PRECOMPILE  = _llm  == address(0) ? address(0x0802) : _llm;
+    }
 
     struct Query {
         address submitter;
