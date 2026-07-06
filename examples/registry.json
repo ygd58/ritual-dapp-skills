@@ -30,8 +30,8 @@
     },
     {
       "name": "RagAgent",
-      "address": "0x7366D14edEeC3Bce5bDC3e33C57e620461115465",
-      "deploy_block": 42592101,
+      "address": "0x62Fa5df1d73Ed8E2043F137b5D54dA941EDE1647",
+      "deploy_block": null,
       "features": [
         "HTTP precompile",
         "LLM precompile",
@@ -39,7 +39,7 @@
         "Document QA"
       ],
       "github": "examples/rag-agent/RagAgent.sol",
-      "note": "On-chain RAG agent: fetch document via HTTP precompile, answer questions via LLM precompile"
+      "note": "v2: keyword-based chunk selection, section markers, citation support"
     }
   ]
 }

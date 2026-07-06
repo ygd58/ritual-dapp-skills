@@ -26,6 +26,8 @@ contract RagAgent {
         bool    answered;
         uint256 submittedAt;
         uint256 answeredAt;
+        string[] selectedChunks;  // Relevant chunks passed to LLM
+        uint256  totalChunks;     // Total chunks found in document
     }
 
     struct ConvoHistory {
@@ -39,6 +41,7 @@ contract RagAgent {
 
     event QuerySubmitted(uint256 indexed queryId, address indexed submitter, string docUrl, string question);
     event DocFetched(uint256 indexed queryId, uint256 docLength);
+    event ChunksSelected(uint256 indexed queryId, uint256 totalChunks, uint256 selectedChunks);
     event AnswerReady(uint256 indexed queryId, string answer);
 
     error QueryNotFound(uint256 queryId);
@@ -64,14 +67,16 @@ contract RagAgent {
 
         queryId = nextQueryId++;
         queries[queryId] = Query({
-            submitter:   msg.sender,
-            docUrl:      docUrl,
-            question:    question,
-            docContent:  "",
-            answer:      "",
-            answered:    false,
-            submittedAt: block.number,
-            answeredAt:  0
+            submitter:     msg.sender,
+            docUrl:        docUrl,
+            question:      question,
+            docContent:    "",
+            answer:        "",
+            answered:      false,
+            submittedAt:   block.number,
+            answeredAt:    0,
+            selectedChunks: new string[](0),
+            totalChunks:   0
         });
 
         emit QuerySubmitted(queryId, msg.sender, docUrl, question);
@@ -123,8 +128,22 @@ contract RagAgent {
     function _runLlm(uint256 queryId, address executor, uint64 ttl) internal {
         Query storage q = queries[queryId];
 
+        // Chunk document and select relevant sections
+        (string[] memory chunks, uint256 totalChunks) = _chunkDocument(q.docContent, 20, 50);
+        (string[] memory selected, uint256 selectedCount) = _selectRelevantChunks(chunks, totalChunks, q.question, 5);
+
+        // Store selected chunks and emit event
+        for (uint256 i = 0; i < selectedCount; i++) {
+            q.selectedChunks.push(selected[i]);
+        }
+        q.totalChunks = totalChunks;
+        emit ChunksSelected(queryId, totalChunks, selectedCount);
+
+        // Build context from selected chunks only
+        string memory context = _buildContext(selected, selectedCount);
+
         (bool ok, bytes memory result) = LLM_PRECOMPILE.call(
-            _buildLlmInput(executor, _buildMessages(q.question, q.docContent), ttl)
+            _buildLlmInput(executor, _buildMessages(q.question, bytes(context)), ttl)
         );
         if (!ok) revert LLMFailed("precompile call failed");
 
@@ -144,13 +163,118 @@ contract RagAgent {
 
     function _buildMessages(string memory question, bytes memory docContent) internal pure returns (string memory) {
         return string.concat(
-            "[{\"role\":\"system\",\"content\":\"You are a document assistant. Answer questions based only on the provided document. Be concise and accurate.\"},",
-            "{\"role\":\"user\",\"content\":\"Document:\\n",
+            "[{\"role\":\"system\",\"content\":\"You are a document assistant. Answer questions based only on the provided document chunks. Be concise and cite the relevant section.\"},",
+            "{\"role\":\"user\",\"content\":\"Document chunks:\\n",
             string(docContent),
             "\\n\\nQuestion: ",
             question,
-            "\"}]"
+            "\\n\\nAnswer based only on the chunks above. If the answer is not in the chunks, say so.\"}]"
         );
+    }
+
+    /// @dev Split document into chunks by newline boundaries.
+    ///      Returns up to maxChunks chunks of at least minChunkLen bytes.
+    function _chunkDocument(
+        bytes memory doc,
+        uint256 maxChunks,
+        uint256 minChunkLen
+    ) internal pure returns (string[] memory chunks, uint256 count) {
+        chunks = new string[](maxChunks);
+        count = 0;
+        uint256 start = 0;
+
+        for (uint256 i = 0; i <= doc.length; i++) {
+            bool boundary = (i == doc.length) ||
+                (doc[i] == 0x0A) || // newline
+                (i > 0 && doc[i] == 0x2E && (i + 1 == doc.length || doc[i + 1] == 0x20)); // period + space
+
+            if (boundary && i > start) {
+                uint256 chunkLen = i - start;
+                if (chunkLen >= minChunkLen) {
+                    bytes memory chunk = new bytes(chunkLen);
+                    for (uint256 j = 0; j < chunkLen; j++) {
+                        chunk[j] = doc[start + j];
+                    }
+                    chunks[count] = string(chunk);
+                    count++;
+                    if (count >= maxChunks) break;
+                }
+                start = i + 1;
+            }
+        }
+    }
+
+    /// @dev Select chunks that contain at least one word from the question.
+    ///      Simple keyword matching — no embeddings needed on-chain.
+    function _selectRelevantChunks(
+        string[] memory chunks,
+        uint256 chunkCount,
+        string memory question,
+        uint256 maxSelected
+    ) internal pure returns (string[] memory selected, uint256 selectedCount) {
+        selected = new string[](maxSelected);
+        selectedCount = 0;
+        bytes memory q = bytes(question);
+
+        for (uint256 i = 0; i < chunkCount && selectedCount < maxSelected; i++) {
+            bytes memory chunk = bytes(chunks[i]);
+            if (_containsKeyword(chunk, q)) {
+                selected[selectedCount] = chunks[i];
+                selectedCount++;
+            }
+        }
+
+        // Fallback: if no chunk matched, return first maxSelected chunks
+        if (selectedCount == 0) {
+            for (uint256 i = 0; i < chunkCount && i < maxSelected; i++) {
+                selected[i] = chunks[i];
+                selectedCount++;
+            }
+        }
+    }
+
+    /// @dev Returns true if haystack contains any 4+ char word from needle.
+    function _containsKeyword(bytes memory haystack, bytes memory needle) internal pure returns (bool) {
+        uint256 wordStart = 0;
+        for (uint256 i = 0; i <= needle.length; i++) {
+            bool wordEnd = (i == needle.length) || needle[i] == 0x20 || needle[i] == 0x3F;
+            if (wordEnd && i > wordStart + 3) {
+                uint256 wordLen = i - wordStart;
+                // Search for this word in haystack
+                for (uint256 j = 0; j + wordLen <= haystack.length; j++) {
+                    bool isMatch = true;
+                    for (uint256 k = 0; k < wordLen; k++) {
+                        // Case-insensitive: lowercase both
+                        bytes1 a = haystack[j + k];
+                        bytes1 b = needle[wordStart + k];
+                        if (a >= 0x41 && a <= 0x5A) a = bytes1(uint8(a) + 32);
+                        if (b >= 0x41 && b <= 0x5A) b = bytes1(uint8(b) + 32);
+                        if (a != b) { isMatch = false; break; }
+                    }
+                    if (isMatch) return true;
+                }
+            }
+            if (wordEnd) wordStart = i + 1;
+        }
+        return false;
+    }
+
+    /// @dev Build context string from selected chunks with section markers.
+    function _buildContext(string[] memory chunks, uint256 count) internal pure returns (string memory ctx) {
+        ctx = "";
+        for (uint256 i = 0; i < count; i++) {
+            ctx = string.concat(ctx, "[Chunk ", _uint2str(i + 1), "]\n", chunks[i], "\n\n");
+        }
+    }
+
+    function _uint2str(uint256 v) internal pure returns (string memory) {
+        if (v == 0) return "0";
+        uint256 tmp = v;
+        uint256 len;
+        while (tmp > 0) { len++; tmp /= 10; }
+        bytes memory b = new bytes(len);
+        while (v > 0) { b[--len] = bytes1(uint8(48 + v % 10)); v /= 10; }
+        return string(b);
     }
 
     function _buildLlmInput(address executor, string memory messages, uint64 ttl) internal pure returns (bytes memory) {
@@ -179,6 +303,11 @@ contract RagAgent {
     function getAnswer(uint256 queryId) external view returns (string memory) {
         if (queries[queryId].submitter == address(0)) revert QueryNotFound(queryId);
         return queries[queryId].answer;
+    }
+
+    function getSelectedChunks(uint256 queryId) external view returns (string[] memory, uint256) {
+        if (queries[queryId].submitter == address(0)) revert QueryNotFound(queryId);
+        return (queries[queryId].selectedChunks, queries[queryId].totalChunks);
     }
 
     receive() external payable {}
