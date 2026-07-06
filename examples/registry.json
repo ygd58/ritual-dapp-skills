@@ -9,15 +9,37 @@
       "name": "TweetRegistry",
       "address": "0x188c30510Ec32E6F00620b4f1c2E63925aA39ea2",
       "deploy_block": 2215742,
-      "features": ["Scheduler", "HTTP precompile", "Secrets/Delegation"],
+      "features": [
+        "Scheduler",
+        "HTTP precompile",
+        "Secrets/Delegation"
+      ],
       "github": null
     },
     {
       "name": "TweetRentManager",
       "address": "0xDb0f588a05F56aF801ED9e17241fa48706e8AE1f",
       "deploy_block": 2215742,
-      "features": ["Scheduler", "HTTP precompile", "Secrets/Delegation", "Contract-owned secrets"],
+      "features": [
+        "Scheduler",
+        "HTTP precompile",
+        "Secrets/Delegation",
+        "Contract-owned secrets"
+      ],
       "github": null
+    },
+    {
+      "name": "RagAgent",
+      "address": "0x7366D14edEeC3Bce5bDC3e33C57e620461115465",
+      "deploy_block": 42592101,
+      "features": [
+        "HTTP precompile",
+        "LLM precompile",
+        "On-chain RAG",
+        "Document QA"
+      ],
+      "github": "examples/rag-agent/RagAgent.sol",
+      "note": "On-chain RAG agent: fetch document via HTTP precompile, answer questions via LLM precompile"
     }
   ]
 }

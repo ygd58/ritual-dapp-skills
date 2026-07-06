@@ -21,3 +21,5 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
+examples/rag-agent/out/
+examples/rag-agent/cache/
